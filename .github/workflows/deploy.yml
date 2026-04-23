@@ -47,7 +47,7 @@ jobs:
             --context environment=prod
       - name: Save CDK outputs
         working-directory: infrastructure
-        run: npx cdk output --json > ../cdk-outputs.json
+        run: npx cdk outputs --json > ../cdk-outputs.json
       - uses: actions/upload-artifact@v4
         with:
           name: cdk-outputs
