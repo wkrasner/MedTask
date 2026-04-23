@@ -1,5 +1,14 @@
+type TaskType = 'prior-auth' | 'prescription' | 'return-call' | 'scheduling' | 'records-request' | 'referral'
+type TaskStatus = 'open' | 'in-progress' | 'pending' | 'completed' | 'denied' | 'cancelled'
+type Priority = 'urgent' | 'high' | 'normal' | 'low'
+
+interface Task { taskId: string; taskType: TaskType; status: TaskStatus; priority: Priority; patientName: string; patientDob: string; assignedTo?: string; assignedName?: string; notes: string; dueDate?: string | null; updatedAt: string; [key: string]: unknown }
+interface CreateTaskRequest { taskType: TaskType; priority: Priority; patientId: string; patientName: string; patientDob: string; assignedTo?: string; notes: string; dueDate?: string; [key: string]: unknown }
+interface UpdateTaskRequest { taskId: string; status?: TaskStatus; priority?: Priority; assignedTo?: string; notes?: string; dueDate?: string; [key: string]: unknown }
+interface ListTasksQuery { taskType?: TaskType; status?: TaskStatus; assignedTo?: string; limit?: number; lastKey?: string }
+interface ApiResponse<T> { success: boolean; data?: T; error?: string; pagination?: { nextKey?: string; count: number } }
 import { useState, useEffect, useCallback } from "react";
-import { Task, CreateTaskRequest, UpdateTaskRequest, ListTasksQuery, ApiResponse } from "../../backend/shared/types";
+
 
 const API_BASE = import.meta.env.VITE_API_URL as string;
 
