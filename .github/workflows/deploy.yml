@@ -8,7 +8,7 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  NODE_VERSION: "20"
+  NODE_VERSION: "22"
 
 jobs:
   test:
@@ -19,7 +19,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      - run: npm ci
+      - run: npm install
       - run: npm test --if-present
       - run: npm run lint --if-present
 
