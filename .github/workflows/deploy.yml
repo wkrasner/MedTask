@@ -20,7 +20,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - run: npm install
       - run: npm test --if-present
- 
+
   deploy-infra:
     needs: test
     if: github.ref == 'refs/heads/main'
@@ -46,8 +46,19 @@ jobs:
             --context fromEmail=${{ secrets.FROM_EMAIL }} \
             --context environment=prod
       - name: Save CDK outputs
-        working-directory: infrastructure
-        run: npx cdk outputs --json > ../cdk-outputs.json
+        run: |
+          aws cloudformation describe-stacks \
+            --stack-name MedicalOfficeStack \
+            --region us-east-1 \
+            --query "Stacks[0].Outputs" \
+            --output json | \
+          python3 -c "
+          import json, sys
+          outputs = json.load(sys.stdin)
+          result = {o['OutputKey']: o['OutputValue'] for o in outputs}
+          wrapped = {'MedicalOfficeStack': result}
+          print(json.dumps(wrapped, indent=2))
+          " > cdk-outputs.json
       - uses: actions/upload-artifact@v4
         with:
           name: cdk-outputs
@@ -79,10 +90,6 @@ jobs:
           export VITE_USER_POOL_ID=$(cat ../cdk-outputs.json | jq -r '.MedicalOfficeStack.UserPoolId')
           export VITE_USER_POOL_CLIENT_ID=$(cat ../cdk-outputs.json | jq -r '.MedicalOfficeStack.UserPoolClientId')
           npm run build
-      - name: Upload to S3 + invalidate CloudFront
-        working-directory: frontend
+      - name: Upload to S3 and invalidate CloudFront
         run: |
-          S3=$(cat ../cdk-outputs.json | jq -r '.MedicalOfficeStack.SiteBucketName')
-          CF=$(cat ../cdk-outputs.json | jq -r '.MedicalOfficeStack.DistributionId')
-          aws s3 sync dist/ s3://$S3 --delete
-          aws cloudfront create-invalidation --distribution-id $CF --paths "/*"
+          S3=$(cat cdk-outputs.json | jq -r '.MedicalOfficeStack.Si
