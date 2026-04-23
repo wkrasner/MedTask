@@ -9,7 +9,7 @@ on:
 env:
   AWS_REGION: us-east-1
   NODE_VERSION: "22"
-  S3_BUCKET: medicalofficestack-sitebucket397a1860-ax1nzizli2yd
+  S3_BUCKET: medicalofficestack-sitebucket397a1860-axlnzizli2yd
   CF_DISTRIBUTION_ID: EYYFTP5RLOAXD
 
 jobs:
