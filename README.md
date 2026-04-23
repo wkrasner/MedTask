@@ -52,4 +52,5 @@ cd frontend && npm run dev
 - CloudTrail audit logging is configured
 - All S3 buckets block public access
 - Cognito enforces MFA for clinical roles
+
 - 
