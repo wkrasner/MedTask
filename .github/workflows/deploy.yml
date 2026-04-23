@@ -86,10 +86,13 @@ jobs:
         working-directory: frontend
         run: |
           npm install
-          export VITE_API_URL=$(cat ../cdk-outputs.json | jq -r '.MedicalOfficeStack.ApiUrl')
-          export VITE_USER_POOL_ID=$(cat ../cdk-outputs.json | jq -r '.MedicalOfficeStack.UserPoolId')
-          export VITE_USER_POOL_CLIENT_ID=$(cat ../cdk-outputs.json | jq -r '.MedicalOfficeStack.UserPoolClientId')
+          export VITE_API_URL=$(cat ../cdk-outputs.json | jq -r ".MedicalOfficeStack.ApiUrl")
+          export VITE_USER_POOL_ID=$(cat ../cdk-outputs.json | jq -r ".MedicalOfficeStack.UserPoolId")
+          export VITE_USER_POOL_CLIENT_ID=$(cat ../cdk-outputs.json | jq -r ".MedicalOfficeStack.UserPoolClientId")
           npm run build
       - name: Upload to S3 and invalidate CloudFront
         run: |
-          S3=$(cat cdk-outputs.json | jq -r '.MedicalOfficeStack.Si
+          S3=$(cat cdk-outputs.json | jq -r ".MedicalOfficeStack.SiteBucketName")
+          CF=$(cat cdk-outputs.json | jq -r ".MedicalOfficeStack.DistributionId")
+          aws s3 sync frontend/dist/ s3://$S3 --delete
+          aws cloudfront create-invalidation --distribution-id $CF --paths "/*"
