@@ -18,7 +18,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
       - run: npm install
       - run: npm test --if-present
       - run: npm run lint --if-present
@@ -35,8 +34,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - run: npm ci
+      - run: npm install
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
@@ -44,14 +42,13 @@ jobs:
       - name: CDK deploy
         working-directory: infrastructure
         run: |
-          npm ci
+          npm install
           npx cdk deploy --require-approval never \
             --context fromEmail=${{ secrets.FROM_EMAIL }} \
             --context environment=prod
       - name: Save CDK outputs
         working-directory: infrastructure
-        run: |
-          npx cdk output --json > ../cdk-outputs.json
+        run: npx cdk output --json > ../cdk-outputs.json
       - uses: actions/upload-artifact@v4
         with:
           name: cdk-outputs
@@ -71,7 +68,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
@@ -79,7 +75,7 @@ jobs:
       - name: Build React app
         working-directory: frontend
         run: |
-          npm ci
+          npm install
           export VITE_API_URL=$(cat ../cdk-outputs.json | jq -r '.MedicalOfficeStack.ApiUrl')
           export VITE_USER_POOL_ID=$(cat ../cdk-outputs.json | jq -r '.MedicalOfficeStack.UserPoolId')
           export VITE_USER_POOL_CLIENT_ID=$(cat ../cdk-outputs.json | jq -r '.MedicalOfficeStack.UserPoolClientId')
