@@ -26,7 +26,7 @@ export class MedicalOfficeStack extends cdk.Stack {
     super(scope, id, props)
 
     const isProd = props.environment === 'prod'
-    const appUrl = 'https://d3ivikhwu2678t.cloudfront.net'
+    const appUrl = 'https://d15iv99epopcg7.cloudfront.net'
 
     // ── DynamoDB: Tasks ───────────────────────────────────────────────────────
     const tasksTable = new dynamodb.Table(this, 'TasksTable', {
@@ -145,7 +145,7 @@ export class MedicalOfficeStack extends cdk.Stack {
     // EventBridge: run overdue check every day at 8am ET
     new events.Rule(this, 'OverdueSchedule', {
       ruleName: `medical-office-overdue-${props.environment}`,
-      schedule: events.Schedule.cron({ minute: '0', hour: '13' }), // 8am ET = 13:00 UTC
+      schedule: events.Schedule.cron({ minute: '0', hour: '13' }),
       targets: [new eventsTargets.LambdaFunction(overdueLambda)],
     })
 
@@ -180,26 +180,23 @@ export class MedicalOfficeStack extends cdk.Stack {
     httpApi.addRoutes({ path: '/prefs/{userId}', methods: [apigatewayv2.HttpMethod.GET, apigatewayv2.HttpMethod.PUT], integration: prefsIntegration })
 
     // ── S3 + CloudFront ───────────────────────────────────────────────────────
-    const siteBucket = s3.Bucket.fromBucketName(this, 'SiteBucket', 'medicalofficestack-sitebucket397a1860-axlnzizli2yd')
+    const siteBucket = s3.Bucket.fromBucketName(
+      this, 'SiteBucket',
+      'medicalofficestack-sitebucket397a1860-axlnzizli2yd'
+    )
 
-const distribution = new cloudfront.Distribution(this, 'SiteDistribution', {
-  defaultBehavior: {
-    origin: new cloudfrontOrigins.S3StaticWebsiteOrigin(siteBucket),
-    viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-    cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
-  },
-  defaultRootObject: 'index.html',
-  errorResponses: [
-    { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html' },
-    { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html' },
-  ],
-})
-
-new cdk.CfnOutput(this, 'CloudFrontDistributionId', { value: distribution.distributionId })
-new cdk.CfnOutput(this, 'NewCloudFrontUrl', { value: `https://${distribution.distributionDomainName}` })
-    // ── SES Email Identity ────────────────────────────────────────────────────
-    // Note: verify manually via AWS console or CLI before first deploy
-    // aws sesv2 create-email-identity --email-identity your@email.com
+    const distribution = new cloudfront.Distribution(this, 'SiteDistribution', {
+      defaultBehavior: {
+        origin: cloudfrontOrigins.S3BucketOrigin.withOriginAccessControl(siteBucket),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+      },
+      defaultRootObject: 'index.html',
+      errorResponses: [
+        { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html' },
+        { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html' },
+      ],
+    })
 
     // ── Outputs ───────────────────────────────────────────────────────────────
     new cdk.CfnOutput(this, 'ApiUrl', { value: httpApi.apiEndpoint })
@@ -207,6 +204,7 @@ new cdk.CfnOutput(this, 'NewCloudFrontUrl', { value: `https://${distribution.dis
     new cdk.CfnOutput(this, 'PrefsTableName', { value: prefsTable.tableName })
     new cdk.CfnOutput(this, 'UserPoolId', { value: 'us-east-1_rUUpPPAqG' })
     new cdk.CfnOutput(this, 'UserPoolClientId', { value: '3cja6d55tltoap89q3tr5unqgb' })
-    new cdk.CfnOutput(this, 'CloudFrontUrl', { value: appUrl })
+    new cdk.CfnOutput(this, 'CloudFrontUrl', { value: `https://${distribution.distributionDomainName}` })
+    new cdk.CfnOutput(this, 'CloudFrontDistributionId', { value: distribution.distributionId })
   }
 }
