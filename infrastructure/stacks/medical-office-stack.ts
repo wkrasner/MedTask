@@ -65,8 +65,8 @@ export class MedicalOfficeStack extends cdk.Stack {
     const userPool = cognito.UserPool.fromUserPoolId(this, 'UserPool', 'us-east-1_rUUpPPAqG')
 
     const userPoolClient = cognito.UserPoolClient.fromUserPoolClientId(
-      this, 'UserPoolClient', '3cja6d55tltoap89q3tr5unqgb'
-    )
+  this, 'UserPoolClient', '2ecmdgbgkmjd0q3cj1m12o78ts'
+)
 
     // ── Lambda env vars ───────────────────────────────────────────────────────
     const commonEnv = {
@@ -203,7 +203,7 @@ export class MedicalOfficeStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'TasksTableName', { value: tasksTable.tableName })
     new cdk.CfnOutput(this, 'PrefsTableName', { value: prefsTable.tableName })
     new cdk.CfnOutput(this, 'UserPoolId', { value: 'us-east-1_rUUpPPAqG' })
-    new cdk.CfnOutput(this, 'UserPoolClientId', { value: '3cja6d55tltoap89q3tr5unqgb' })
+   new cdk.CfnOutput(this, 'UserPoolClientId', { value: '2ecmdgbgkmjd0q3cj1m12o78ts' })
     new cdk.CfnOutput(this, 'CloudFrontUrl', { value: `https://${distribution.distributionDomainName}` })
     new cdk.CfnOutput(this, 'CloudFrontDistributionId', { value: distribution.distributionId })
   }
