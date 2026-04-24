@@ -6,9 +6,7 @@ Amplify.configure({
     Cognito: {
       userPoolId: 'us-east-1_rUUpPPAqG',
       userPoolClientId: '3cja6d55tltoap89q3tr5unqgb',
-      loginWith: {
-        email: true,
-      },
+      loginWith: { email: true },
       passwordFormat: {
         minLength: 12,
         requireNumbers: true,
@@ -22,34 +20,21 @@ Amplify.configure({
 
 export async function login(email: string, password: string) {
   try {
-    const result = await signIn({ username: email, password })
-    return result
-  } catch (err) {
-    throw err
-  }
+    return await signIn({ username: email, password })
+  } catch (err) { throw err }
 }
 
 export async function logout() {
-  try {
-    await signOut()
-  } catch (err) {
-    throw err
-  }
+  try { await signOut() } catch (err) { throw err }
 }
 
 export async function getUser() {
-  try {
-    return await getCurrentUser()
-  } catch {
-    return null
-  }
+  try { return await getCurrentUser() } catch { return null }
 }
 
 export async function getIdToken(): Promise<string | null> {
   try {
     const session = await fetchAuthSession()
     return session.tokens?.idToken?.toString() ?? null
-  } catch {
-    return null
-  }
+  } catch { return null }
 }

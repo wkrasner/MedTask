@@ -1,110 +1,112 @@
-import { DynamoDBStreamHandler } from "aws-lambda";
-import { SNSClient, PublishCommand } from "@aws-sdk/client-sns";
-import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
-import { unmarshall } from "@aws-sdk/util-dynamodb";
-import { AttributeValue } from "@aws-sdk/client-dynamodb";
-import { Task, TaskStatus } from "../../shared/types";
+import { DynamoDBStreamHandler } from 'aws-lambda'
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
+import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb'
+import { unmarshall } from '@aws-sdk/util-dynamodb'
+import { AttributeValue } from '@aws-sdk/client-dynamodb'
+import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2'
+import { SNSClient, PublishCommand } from '@aws-sdk/client-sns'
+import { NotificationPref, Task, AlertType } from '../../shared/types'
 
-const sns = new SNSClient({});
-const ses = new SESv2Client({});
+const PREFS_TABLE = process.env.PREFS_TABLE!
+const FROM_EMAIL = process.env.FROM_EMAIL!
+const APP_URL = process.env.APP_URL!
 
-const FROM_EMAIL = process.env.FROM_EMAIL!;
-const ALERT_TOPIC_ARN = process.env.ALERT_TOPIC_ARN!;
-
-// ─── Stream handler ───────────────────────────────────────────────────────────
+const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}))
+const ses = new SESv2Client({})
+const sns = new SNSClient({})
 
 export const handler: DynamoDBStreamHandler = async (event) => {
+  // Load all notification prefs once per invocation
+  const prefsResult = await ddb.send(new ScanCommand({ TableName: PREFS_TABLE }))
+  const allPrefs = (prefsResult.Items ?? []) as NotificationPref[]
+
   for (const record of event.Records) {
-    if (record.eventName !== "MODIFY" && record.eventName !== "INSERT") continue;
+    if (!record.dynamodb?.NewImage) continue
+    const newTask = unmarshall(record.dynamodb.NewImage as Record<string, AttributeValue>) as Task
+    const oldTask = record.dynamodb.OldImage
+      ? (unmarshall(record.dynamodb.OldImage as Record<string, AttributeValue>) as Task)
+      : null
 
-    const newImage = record.dynamodb?.NewImage;
-    const oldImage = record.dynamodb?.OldImage;
-    if (!newImage) continue;
+    const isNew = record.eventName === 'INSERT'
+    const isUpdate = record.eventName === 'MODIFY'
 
-    const task = unmarshall(newImage as Record<string, AttributeValue>) as Task;
-    const oldTask = oldImage ? (unmarshall(oldImage as Record<string, AttributeValue>) as Task) : null;
+    // Determine which alert type this event maps to
+    const alertTypes: AlertType[] = []
 
-    await handleTaskChange(task, oldTask);
-  }
-};
-
-// ─── Business logic ───────────────────────────────────────────────────────────
-
-async function handleTaskChange(task: Task, old: Task | null) {
-  const isNew = !old;
-  const statusChanged = old && old.status !== task.status;
-
-  // Notify on urgent new tasks
-  if (isNew && task.priority === "urgent") {
-    await publishSns(
-      `🚨 Urgent ${task.taskType} created for ${task.patientName}`,
-      `Task ID: ${task.taskId}\nPriority: URGENT\nNotes: ${task.notes}`
-    );
-  }
-
-  // Notify on status transitions of interest
-  if (statusChanged) {
-    const interesting: TaskStatus[] = ["completed", "cancelled"];
-    if (interesting.includes(task.status)) {
-      await sendEmail(
-        `Task ${task.status}: ${task.taskType} for ${task.patientName}`,
-        buildStatusEmail(task)
-      );
+    if (isNew && newTask.priority === 'urgent') alertTypes.push('task_created_urgent')
+    if (isNew) alertTypes.push('task_status_changed')
+    if (isUpdate && oldTask && oldTask.status !== newTask.status) {
+      alertTypes.push('task_status_changed')
+      if (newTask.status === 'denied') alertTypes.push('task_denied')
     }
-  }
 
-  // Prior auth: alert when due date is today or overdue
-  if (task.taskType === "prior-auth" && task.dueDate && task.status === "open") {
-    const due = new Date(task.dueDate);
-    const now = new Date();
-    if (due <= now) {
-      await publishSns(
-        `Prior Auth overdue: ${task.patientName}`,
-        `Auth for ${(task as any).medicationOrProcedure} is overdue. Task: ${task.taskId}`
-      );
+    if (alertTypes.length === 0) continue
+
+    // Find all prefs subscribers for these alert types
+    const recipients = allPrefs.filter(p =>
+      p.alertTypes.some(at => alertTypes.includes(at))
+    )
+
+    for (const pref of recipients) {
+      const subject = buildSubject(newTask, alertTypes, isNew, oldTask)
+      const body = buildBody(newTask, alertTypes, isNew, oldTask)
+
+      if (pref.emailEnabled && pref.email) {
+        await sendEmail(pref.email, subject, body).catch(e => console.error('SES error', e))
+      }
+      if (pref.smsEnabled && pref.phone) {
+        await sendSms(pref.phone, `MedTask: ${subject}\n${APP_URL}`).catch(e => console.error('SNS error', e))
+      }
     }
   }
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-async function publishSns(subject: string, message: string) {
-  try {
-    await sns.send(new PublishCommand({
-      TopicArn: ALERT_TOPIC_ARN,
-      Subject: subject,
-      Message: message,
-    }));
-  } catch (err) {
-    console.error("SNS publish failed", err);
-  }
+function buildSubject(task: Task, alertTypes: AlertType[], isNew: boolean, oldTask: Task | null): string {
+  if (alertTypes.includes('task_denied')) return `Task DENIED — ${task.patientName} (${task.taskType})`
+  if (alertTypes.includes('task_created_urgent')) return `🚨 URGENT task created — ${task.patientName}`
+  if (isNew) return `New task: ${task.taskType} for ${task.patientName}`
+  if (oldTask) return `Task updated: ${task.patientName} — ${oldTask.status} → ${task.status}`
+  return `Task update: ${task.patientName}`
 }
 
-async function sendEmail(subject: string, body: string) {
-  try {
-    await ses.send(new SendEmailCommand({
-      FromEmailAddress: FROM_EMAIL,
-      Destination: { ToAddresses: [FROM_EMAIL] }, // replace with staff routing logic
-      Content: {
-        Simple: {
-          Subject: { Data: subject },
-          Body: { Text: { Data: body } },
-        },
-      },
-    }));
-  } catch (err) {
-    console.error("SES send failed", err);
-  }
-}
-
-function buildStatusEmail(task: Task): string {
-  return [
+function buildBody(task: Task, alertTypes: AlertType[], isNew: boolean, oldTask: Task | null): string {
+  const lines = [
+    `Patient: ${task.patientName}`,
+    `DOB: ${task.patientDob}`,
+    `ECW #: ${task.ecwAccountNumber}`,
     `Task type: ${task.taskType}`,
-    `Patient: ${task.patientName} (DOB: ${task.patientDob})`,
-    `Status: ${task.status}`,
     `Priority: ${task.priority}`,
-    `Updated: ${task.updatedAt}`,
-    task.completedAt ? `Completed at: ${task.completedAt}` : "",
+    `Status: ${task.status}`,
+    oldTask && oldTask.status !== task.status ? `Previous status: ${oldTask.status}` : '',
+    task.assignedName ? `Assigned to: ${task.assignedName}` : '',
+    task.dueDate ? `Due: ${task.dueDate}` : '',
+    '',
     `Notes: ${task.notes}`,
-  ].filter(Boolean).join("\n");
+    '',
+    `View task: ${APP_URL}`,
+  ].filter(Boolean)
+  return lines.join('\n')
+}
+
+async function sendEmail(to: string, subject: string, body: string) {
+  await ses.send(new SendEmailCommand({
+    FromEmailAddress: FROM_EMAIL,
+    Destination: { ToAddresses: [to] },
+    Content: {
+      Simple: {
+        Subject: { Data: subject },
+        Body: { Text: { Data: body } },
+      },
+    },
+  }))
+}
+
+async function sendSms(phone: string, message: string) {
+  await sns.send(new PublishCommand({
+    PhoneNumber: phone,
+    Message: message,
+    MessageAttributes: {
+      'AWS.SNS.SMS.SMSType': { DataType: 'String', StringValue: 'Transactional' },
+    },
+  }))
 }
