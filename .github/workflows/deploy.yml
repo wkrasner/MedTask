@@ -63,7 +63,7 @@ jobs:
           npm install
           export VITE_API_URL=https://op3fubg07j.execute-api.us-east-1.amazonaws.com
           export VITE_USER_POOL_ID=us-east-1_rUUpPPAqG
-         new cdk.CfnOutput(this, 'UserPoolClientId', { value: '2ecmdgbgkmjd0q3cj1m12o78ts' })
+          export VITE_USER_POOL_CLIENT_ID=2ecmdgbgkmjd0q3cj1m12o78ts
           npm run build
       - name: Upload to S3
         run: |
