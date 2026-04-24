@@ -196,8 +196,7 @@ const distribution = new cloudfront.Distribution(this, 'SiteDistribution', {
 })
 
 new cdk.CfnOutput(this, 'CloudFrontDistributionId', { value: distribution.distributionId })
-new cdk.CfnOutput(this, 'CloudFrontUrl', { value: `https://${distribution.distributionDomainName}` })
-
+new cdk.CfnOutput(this, 'NewCloudFrontUrl', { value: `https://${distribution.distributionDomainName}` })
     // ── SES Email Identity ────────────────────────────────────────────────────
     // Note: verify manually via AWS console or CLI before first deploy
     // aws sesv2 create-email-identity --email-identity your@email.com
