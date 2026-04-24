@@ -182,6 +182,22 @@ export class MedicalOfficeStack extends cdk.Stack {
     // ── S3 + CloudFront ───────────────────────────────────────────────────────
     const siteBucket = s3.Bucket.fromBucketName(this, 'SiteBucket', 'medicalofficestack-sitebucket397a1860-axlnzizli2yd')
 
+const distribution = new cloudfront.Distribution(this, 'SiteDistribution', {
+  defaultBehavior: {
+    origin: new cloudfrontOrigins.S3StaticWebsiteOrigin(siteBucket),
+    viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+    cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+  },
+  defaultRootObject: 'index.html',
+  errorResponses: [
+    { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html' },
+    { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html' },
+  ],
+})
+
+new cdk.CfnOutput(this, 'CloudFrontDistributionId', { value: distribution.distributionId })
+new cdk.CfnOutput(this, 'CloudFrontUrl', { value: `https://${distribution.distributionDomainName}` })
+
     // ── SES Email Identity ────────────────────────────────────────────────────
     // Note: verify manually via AWS console or CLI before first deploy
     // aws sesv2 create-email-identity --email-identity your@email.com
