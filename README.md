@@ -48,6 +48,8 @@ cd frontend && npm run dev
 ## HIPAA notes
 
 - Sign a BAA with AWS before storing PHI
+
+  
 - DynamoDB encryption at rest is enabled in the CDK stack
 - CloudTrail audit logging is configured
 - All S3 buckets block public access
