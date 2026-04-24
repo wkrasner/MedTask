@@ -1,17 +1,13 @@
 name: Deploy
-
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
 env:
   AWS_REGION: us-east-1
   NODE_VERSION: "22"
   S3_BUCKET: medicalofficestack-sitebucket397a1860-axlnzizli2yd
-  CF_DISTRIBUTION_ID: EYYFTP5RLOAXD
-
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -22,7 +18,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - run: npm install
       - run: npm test --if-present
-
   deploy-infra:
     needs: test
     if: github.ref == 'refs/heads/main'
@@ -47,7 +42,6 @@ jobs:
           npx cdk deploy --require-approval never \
             --context fromEmail=${{ secrets.FROM_EMAIL }} \
             --context environment=prod
-
   deploy-frontend:
     needs: deploy-infra
     runs-on: ubuntu-latest
@@ -71,7 +65,11 @@ jobs:
           export VITE_USER_POOL_ID=us-east-1_rUUpPPAqG
           export VITE_USER_POOL_CLIENT_ID=3cja6d55tltoap89q3tr5unqgb
           npm run build
-      - name: Upload to S3 and invalidate CloudFront
+      - name: Upload to S3
         run: |
           aws s3 sync frontend/dist/ s3://${{ env.S3_BUCKET }} --delete
-         aws cloudfront create-invalidation --distribution-id $(aws cloudfront list-distributions --query "DistributionList.Items[0].Id" --output text) --paths "/*"
+      - name: Invalidate CloudFront
+        run: |
+          DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[0].Id" --output text)
+          echo "Distribution ID: $DIST_ID"
+          aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"
