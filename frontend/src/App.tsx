@@ -261,10 +261,11 @@ function ManageTypesPanel({ customTypes, onClose, onSave }: {
                           <label style={{ ...labelStyle, marginBottom: 4 }}>DROPDOWN OPTIONS (one per line)</label>
                           <textarea
                             style={{ ...inputStyle, minHeight: 70, resize: 'vertical', fontSize: 12 }}
-                            value={(f as any).options?.join('\n') ?? ''}
+                            value={(f as any).optionsText ?? (f as any).options?.join('\n') ?? ''}
                             onChange={e => {
-                              const options = e.target.value.split('\n').map(o => o.trim()).filter(Boolean)
-                              setFormFields(prev => prev.map((field, idx) => idx === i ? { ...field, options } : field))
+                              const text = e.target.value
+                              const options = text.split('\n').map((o: string) => o.trim()).filter(Boolean)
+                              setFormFields(prev => prev.map((field, idx) => idx === i ? { ...field, optionsText: text, options } : field))
                             }}
                             placeholder={'Option 1\nOption 2\nOption 3'}
                           />
