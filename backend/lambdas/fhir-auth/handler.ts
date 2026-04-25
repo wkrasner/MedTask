@@ -65,22 +65,8 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         response_type: 'code',
         client_id: secret.clientId,
         redirect_uri: `${API_URL}/fhir/callback`,
-        scope: [
-          'patient/AllergyIntolerance.read',
-          'patient/Condition.read',
-          'patient/Encounter.read',
-          'patient/Medication.read',
-          'patient/MedicationRequest.read',
-          'patient/Observation.read',
-          'patient/Procedure.read',
-          'patient/DiagnosticReport.read',
-          'patient/FamilyMemberHistory.read',
-          'patient/Immunization.read',
-          'patient/DocumentReference.read',
-          'user/Encounter.read',
-        ].join(' '),
+        scope: 'openid launch/patient patient/AllergyIntolerance.read patient/Condition.read patient/Encounter.read patient/Medication.read patient/MedicationRequest.read patient/Observation.read patient/Procedure.read patient/DiagnosticReport.read patient/FamilyMemberHistory.read patient/Immunization.read patient/DocumentReference.read user/Encounter.read',
         state: userId,
-        aud: secret.fhirBaseUrl,
       })
       const authUrl = `${secret.authUrl}?${params.toString()}`
       return { statusCode: 302, headers: { Location: authUrl }, body: '' }
