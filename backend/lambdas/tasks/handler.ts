@@ -77,7 +77,8 @@ async function getTask(taskId: string) {
 }
 
 async function listTasks(query: ListTasksQuery = {}) {
-  const { status, taskType, assignedTo, limit = 100, lastKey } = query
+  const { status, taskType, assignedTo, lastKey } = query
+  const limit = query.limit ? parseInt(String(query.limit), 10) : 100
 
   if (assignedTo) {
     const result = await ddb.send(new QueryCommand({
