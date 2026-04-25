@@ -211,12 +211,12 @@ export class MedicalOfficeStack extends cdk.Stack {
       memorySize: 512,
       logRetention: isProd ? logs.RetentionDays.ONE_YEAR : logs.RetentionDays.ONE_WEEK,
       bundling: {
+        externalModules: ['@aws-sdk/*', 'exceljs', 'pdfkit'],
         commandHooks: {
           beforeBundling(_inputDir: string, _outputDir: string): string[] { return [] },
           afterBundling(_inputDir: string, outputDir: string): string[] {
             return [
-              `cd ${outputDir}`,
-              'npm install --production exceljs@4.4.0 pdfkit@0.15.0',
+              `cd ${outputDir} && npm init -y && npm install --production exceljs@4.4.0 pdfkit@0.15.0`,
             ]
           },
           beforeInstall(_inputDir: string, _outputDir: string): string[] { return [] },
@@ -246,12 +246,12 @@ export class MedicalOfficeStack extends cdk.Stack {
       memorySize: 512,
       logRetention: isProd ? logs.RetentionDays.ONE_YEAR : logs.RetentionDays.ONE_WEEK,
       bundling: {
+        externalModules: ['@aws-sdk/*', 'exceljs', 'pdfkit'],
         commandHooks: {
           beforeBundling(_inputDir: string, _outputDir: string): string[] { return [] },
           afterBundling(_inputDir: string, outputDir: string): string[] {
             return [
-              `cd ${outputDir}`,
-              'npm install --production exceljs@4.4.0 pdfkit@0.15.0',
+              `cd ${outputDir} && npm init -y && npm install --production exceljs@4.4.0 pdfkit@0.15.0`,
             ]
           },
           beforeInstall(_inputDir: string, _outputDir: string): string[] { return [] },
