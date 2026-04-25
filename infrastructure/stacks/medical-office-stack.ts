@@ -27,6 +27,7 @@ export class MedicalOfficeStack extends cdk.Stack {
 
     const isProd = props.environment === 'prod'
     const appUrl = 'https://d15iv99epopcg7.cloudfront.net'
+    const apiUrl = 'https://op3fubg07j.execute-api.us-east-1.amazonaws.com'
 
     // ── DynamoDB: Tasks ───────────────────────────────────────────────────────
     const tasksTable = new dynamodb.Table(this, 'TasksTable', {
@@ -61,14 +62,22 @@ export class MedicalOfficeStack extends cdk.Stack {
       removalPolicy: isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     })
 
+    // ── DynamoDB: ECW OAuth Tokens ────────────────────────────────────────────
+    const tokensTable = new dynamodb.Table(this, 'TokensTable', {
+      tableName: `medical-office-ecw-tokens-${props.environment}`,
+      partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      removalPolicy: isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+    })
+
     // ── Cognito ───────────────────────────────────────────────────────────────
     const userPool = cognito.UserPool.fromUserPoolId(this, 'UserPool', 'us-east-1_rUUpPPAqG')
-
     const userPoolClient = cognito.UserPoolClient.fromUserPoolClientId(
-  this, 'UserPoolClient', '2ecmdgbgkmjd0q3cj1m12o78ts'
-)
+      this, 'UserPoolClient', '2ecmdgbgkmjd0q3cj1m12o78ts'
+    )
 
-    // ── Lambda env vars ───────────────────────────────────────────────────────
+    // ── Lambda defaults ───────────────────────────────────────────────────────
     const commonEnv = {
       TASKS_TABLE: tasksTable.tableName,
       PREFS_TABLE: prefsTable.tableName,
@@ -142,12 +151,49 @@ export class MedicalOfficeStack extends cdk.Stack {
       resources: ['*'],
     }))
 
-    // EventBridge: run overdue check every day at 8am ET
     new events.Rule(this, 'OverdueSchedule', {
       ruleName: `medical-office-overdue-${props.environment}`,
       schedule: events.Schedule.cron({ minute: '0', hour: '13' }),
       targets: [new eventsTargets.LambdaFunction(overdueLambda)],
     })
+
+    // ── Lambda: FHIR Auth ─────────────────────────────────────────────────────
+    const fhirAuthLambda = new lambdaNodejs.NodejsFunction(this, 'FhirAuthHandler', {
+      functionName: `medical-office-fhir-auth-${props.environment}`,
+      entry: path.join(__dirname, '../../backend/lambdas/fhir-auth/handler.ts'),
+      handler: 'handler',
+      environment: {
+        TOKENS_TABLE: tokensTable.tableName,
+        ECW_SECRET_ID: 'medtask/ecw-sandbox',
+        API_URL: apiUrl,
+        APP_URL: appUrl,
+      },
+      ...lambdaDefaults,
+    })
+    tokensTable.grantReadWriteData(fhirAuthLambda)
+    fhirAuthLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['secretsmanager:GetSecretValue'],
+      resources: [`arn:aws:secretsmanager:us-east-1:218908192454:secret:medtask/ecw-sandbox*`],
+    }))
+
+    // ── Lambda: FHIR Search ───────────────────────────────────────────────────
+    const fhirSearchLambda = new lambdaNodejs.NodejsFunction(this, 'FhirSearchHandler', {
+      functionName: `medical-office-fhir-search-${props.environment}`,
+      entry: path.join(__dirname, '../../backend/lambdas/fhir-search/handler.ts'),
+      handler: 'handler',
+      environment: {
+        TOKENS_TABLE: tokensTable.tableName,
+        ECW_SECRET_ID: 'medtask/ecw-sandbox',
+        API_URL: apiUrl,
+        APP_URL: appUrl,
+      },
+      ...lambdaDefaults,
+    })
+    tokensTable.grantReadWriteData(fhirSearchLambda)
+    fhirSearchLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['secretsmanager:GetSecretValue'],
+      resources: [`arn:aws:secretsmanager:us-east-1:218908192454:secret:medtask/ecw-sandbox*`],
+    }))
 
     // ── API Gateway ───────────────────────────────────────────────────────────
     const httpApi = new apigatewayv2.HttpApi(this, 'TasksApi', {
@@ -169,15 +215,30 @@ export class MedicalOfficeStack extends cdk.Stack {
 
     const tasksIntegration = new apigatewayv2Integrations.HttpLambdaIntegration('TasksIntegration', tasksLambda)
     const prefsIntegration = new apigatewayv2Integrations.HttpLambdaIntegration('PrefsIntegration', prefsLambda)
+    const fhirAuthIntegration = new apigatewayv2Integrations.HttpLambdaIntegration('FhirAuthIntegration', fhirAuthLambda)
+    const fhirSearchIntegration = new apigatewayv2Integrations.HttpLambdaIntegration('FhirSearchIntegration', fhirSearchLambda)
 
     // Task routes
     httpApi.addRoutes({ path: '/tasks', methods: [apigatewayv2.HttpMethod.GET, apigatewayv2.HttpMethod.POST], integration: tasksIntegration })
     httpApi.addRoutes({ path: '/tasks/{taskId}', methods: [apigatewayv2.HttpMethod.GET, apigatewayv2.HttpMethod.PATCH, apigatewayv2.HttpMethod.DELETE], integration: tasksIntegration })
     httpApi.addRoutes({ path: '/tasks/{taskId}/activity', methods: [apigatewayv2.HttpMethod.POST], integration: tasksIntegration })
 
+    // Config routes
+    httpApi.addRoutes({ path: '/config/task-types', methods: [apigatewayv2.HttpMethod.GET, apigatewayv2.HttpMethod.PUT], integration: tasksIntegration })
+
     // Prefs routes
     httpApi.addRoutes({ path: '/prefs', methods: [apigatewayv2.HttpMethod.GET], integration: prefsIntegration })
     httpApi.addRoutes({ path: '/prefs/{userId}', methods: [apigatewayv2.HttpMethod.GET, apigatewayv2.HttpMethod.PUT], integration: prefsIntegration })
+
+    // FHIR auth routes
+    httpApi.addRoutes({ path: '/fhir/auth', methods: [apigatewayv2.HttpMethod.GET], integration: fhirAuthIntegration })
+    httpApi.addRoutes({ path: '/fhir/callback', methods: [apigatewayv2.HttpMethod.GET], integration: fhirAuthIntegration })
+    httpApi.addRoutes({ path: '/fhir/status', methods: [apigatewayv2.HttpMethod.GET], integration: fhirAuthIntegration })
+    httpApi.addRoutes({ path: '/fhir/refresh', methods: [apigatewayv2.HttpMethod.POST], integration: fhirAuthIntegration })
+
+    // FHIR search routes
+    httpApi.addRoutes({ path: '/fhir/search', methods: [apigatewayv2.HttpMethod.GET], integration: fhirSearchIntegration })
+    httpApi.addRoutes({ path: '/fhir/patient/{patientId}', methods: [apigatewayv2.HttpMethod.GET], integration: fhirSearchIntegration })
 
     // ── S3 + CloudFront ───────────────────────────────────────────────────────
     const siteBucket = s3.Bucket.fromBucketName(
@@ -202,8 +263,9 @@ export class MedicalOfficeStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ApiUrl', { value: httpApi.apiEndpoint })
     new cdk.CfnOutput(this, 'TasksTableName', { value: tasksTable.tableName })
     new cdk.CfnOutput(this, 'PrefsTableName', { value: prefsTable.tableName })
+    new cdk.CfnOutput(this, 'TokensTableName', { value: tokensTable.tableName })
     new cdk.CfnOutput(this, 'UserPoolId', { value: 'us-east-1_rUUpPPAqG' })
-   new cdk.CfnOutput(this, 'UserPoolClientId', { value: '2ecmdgbgkmjd0q3cj1m12o78ts' })
+    new cdk.CfnOutput(this, 'UserPoolClientId', { value: '2ecmdgbgkmjd0q3cj1m12o78ts' })
     new cdk.CfnOutput(this, 'CloudFrontUrl', { value: `https://${distribution.distributionDomainName}` })
     new cdk.CfnOutput(this, 'CloudFrontDistributionId', { value: distribution.distributionId })
   }
