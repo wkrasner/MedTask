@@ -283,7 +283,13 @@ function TaskPanel({ task, customTypes, currentUser, onClose, onSave }: {
     if (!task) return {}
     const vals: Record<string, string> = {}
     const fields = getTypeFields(task.taskType, customTypes)
-    fields.forEach(f => { if (task[f.key] !== undefined) vals[f.key] = String(task[f.key]) })
+    fields.forEach(f => {
+      // Check customFields first, then task object directly
+      const v = task.customFields?.[f.key] ?? task[f.key]
+      if (v !== undefined && v !== null) {
+        vals[f.key] = v === true ? 'Yes' : v === false ? 'No' : String(v)
+      }
+    })
     if (task.customFields) Object.assign(vals, task.customFields)
     return vals
   })
@@ -550,8 +556,13 @@ function TaskDetail({ task, customTypes, currentUser, onClose, onEdit, onStatusC
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 16px', marginBottom: 14 }}>
               {fields.map(f => {
-                const val = task.customFields?.[f.key] ?? String(task[f.key] ?? '—')
-                const isWide = f.type === 'textarea' || f.label.toLowerCase().includes('reason')
+                // Look in customFields first, then directly on task object
+                const rawVal = task.customFields?.[f.key] ?? task[f.key]
+                const val = rawVal === null || rawVal === undefined ? '—'
+                  : rawVal === false ? 'No'
+                  : rawVal === true ? 'Yes ✓'
+                  : String(rawVal)
+                const isWide = f.type === 'textarea' || f.label.toLowerCase().includes('reason') || f.label.toLowerCase().includes('referral reason')
                 const isDenial = f.label.toLowerCase().includes('denial')
                 return (
                   <div key={f.key} style={{ gridColumn: isWide ? 'span 2' : 'span 1' }}>
