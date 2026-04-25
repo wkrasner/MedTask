@@ -868,17 +868,22 @@ function ReportsPanel({ onClose, customTypes }: { onClose: () => void; customTyp
     try {
       const cleanFilters = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== ''))
       const title = `MedTask Report — ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`
-      const res = await apiFetch<any>('/reports/generate', {
+      const { fetchAuthSession } = await import('aws-amplify/auth')
+      const session = await fetchAuthSession()
+      const token = session.tokens?.idToken?.toString()
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/reports/generate`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ format, filters: cleanFilters, title }),
       })
-      // The Lambda returns base64 encoded binary — need raw fetch for binary
-      const rawRes = await fetch(`${import.meta.env.VITE_API_URL}/reports/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ format, filters: cleanFilters, title }),
-      })
-      const blob = await rawRes.blob()
+      if (!res.ok) {
+        const err = await res.text()
+        throw new Error(err)
+      }
+      const blob = await res.blob()
       const ext = format === 'excel' ? 'xlsx' : format === 'text' ? 'txt' : format
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
