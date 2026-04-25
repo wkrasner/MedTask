@@ -3,6 +3,21 @@ import { useAuth } from './hooks/useAuth'
 import LoginPage from './pages/LoginPage'
 import { getCurrentUserInfo } from './api/client'
 import { useTasks, createTask, updateTask, addActivityEntry } from './api/tasks'
+import { apiFetch } from './api/client'
+
+async function loadCustomTypes(): Promise<CustomTaskTypeDef[]> {
+  try {
+    const result = await apiFetch<{ success: boolean; data: CustomTaskTypeDef[] }>('/config/task-types')
+    return result.data ?? []
+  } catch { return [] }
+}
+
+async function saveCustomTypes(types: CustomTaskTypeDef[]): Promise<void> {
+  await apiFetch('/config/task-types', {
+    method: 'PUT',
+    body: JSON.stringify({ types }),
+  })
+}
 import { getAllPrefs, saveUserPrefs } from './api/prefs'
 import type { Task, ActivityEntry, NotificationPref, AlertType } from '../../backend/shared/types'
 
@@ -78,6 +93,13 @@ function timeAgo(iso: string) {
   const h = Math.floor(m / 60)
   if (h < 24) return `${h}h ago`
   return `${Math.floor(h / 24)}d ago`
+}
+function daysSince(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime()
+  const days = Math.floor(diff / 86400000)
+  if (days === 0) return 'Today'
+  if (days === 1) return '1 day'
+  return `${days} days`
 }
 function formatDob(dob: string) {
   if (!dob) return '—'
@@ -517,7 +539,7 @@ function TaskPanel({ task, customTypes, currentUser, onClose, onSave }: {
           <div style={{ background: '#F9FAFB', borderRadius: 8, padding: '12px 14px', marginBottom: 16 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', letterSpacing: '0.05em', marginBottom: 10 }}>TASK INFO</div>
             <Field label="Task type">
-              <select style={inputStyle} value={taskType} onChange={e => { setTaskType(e.target.value); setFieldValues({}) }} disabled={!!task}>
+              <select style={inputStyle} value={taskType} onChange={e => { setTaskType(e.target.value); setFieldValues({}) }}>
                 <optgroup label="Built-in">
                   {Object.entries(BUILTIN_TYPE_META).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
                 </optgroup>
@@ -636,9 +658,14 @@ function TaskCard({ task, customTypes, onClick, onDragStart }: {
         {!denied && dueToday && <span style={{ fontSize: 9, background: '#FEF3C7', color: '#92400E', padding: '1px 5px', borderRadius: 3, fontWeight: 700 }}>Today</span>}
       </div>
       <div style={{ fontSize: 11, color: '#6B7280', lineHeight: 1.4, marginBottom: 5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' } as React.CSSProperties}>{task.notes}</div>
-      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: 10, color: '#9CA3AF' }}>{task.assignedName ?? 'Unassigned'}</span>
-        <span style={{ fontSize: 10, color: '#9CA3AF' }}>{timeAgo(task.updatedAt)}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 9, background: '#F3F4F6', color: '#6B7280', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>
+            🕐 {daysSince(task.createdAt ?? task.updatedAt)}
+          </span>
+          <span style={{ fontSize: 10, color: '#9CA3AF' }}>{timeAgo(task.updatedAt)}</span>
+        </div>
       </div>
     </div>
   )
@@ -807,6 +834,13 @@ function StatCard({ label, value, sub, color }: { label: string; value: number; 
 function Dashboard({ currentUser, onLogout }: { currentUser: CurrentUser; onLogout: () => void }) {
   const { tasks, setTasks, loading, error, refresh } = useTasks()
   const [customTypes, setCustomTypes] = useState<CustomTaskTypeDef[]>([])
+
+  // Load custom types from DynamoDB on mount
+  useEffect(() => {
+    loadCustomTypes().then(types => {
+      if (types.length > 0) setCustomTypes(types)
+    }).catch(console.error)
+  }, [])
   const [view, setView] = useState<'board' | 'list'>('board')
   const [filterType, setFilterType] = useState('all')
   const [filterStaff, setFilterStaff] = useState('all')
@@ -1042,7 +1076,10 @@ function Dashboard({ currentUser, onLogout }: { currentUser: CurrentUser; onLogo
         <ManageTypesPanel
           customTypes={customTypes}
           onClose={() => setShowManageTypes(false)}
-          onSave={setCustomTypes}
+          onSave={async (types) => {
+            setCustomTypes(types)
+            await saveCustomTypes(types).catch(console.error)
+          }}
         />
       )}
 
