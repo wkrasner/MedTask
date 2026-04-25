@@ -162,7 +162,7 @@ function ManageTypesPanel({ customTypes, onClose, onSave }: {
 
   const deleteType = (key: string) => setTypes(prev => prev.filter(t => t.key !== key))
   const addField = () => setFormFields(prev => [...prev, { key: `field${prev.length}`, label: '', type: 'text' }])
-  const updateField = (i: number, label: string, type: string) => setFormFields(prev => prev.map((f, idx) => idx === i ? { key: label.toLowerCase().replace(/\s+/g, '-'), label, type } : f))
+  const updateField = (i: number, label: string, type: string) => setFormFields(prev => prev.map((f, idx) => idx === i ? { ...f, key: label.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''), label, type, options: type === 'select' ? ((f as any).options ?? []) : undefined } : f))
   const removeField = (i: number) => setFormFields(prev => prev.filter((_, idx) => idx !== i))
 
   return (
@@ -245,15 +245,32 @@ function ManageTypesPanel({ customTypes, onClose, onSave }: {
                 <label style={labelStyle}>CUSTOM FIELDS</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {formFields.map((f, i) => (
-                    <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 90px auto', gap: 6 }}>
-                      <input style={inputStyle} value={f.label} onChange={e => updateField(i, e.target.value, f.type)} placeholder="Field name" />
-                      <select style={inputStyle} value={f.type} onChange={e => updateField(i, f.label, e.target.value)}>
-                        <option value="text">Text</option>
-                        <option value="date">Date</option>
-                        <option value="textarea">Long text</option>
-                        <option value="select">Dropdown</option>
-                      </select>
-                      <button onClick={() => removeField(i)} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #FECACA', background: '#FFF5F5', color: '#DC2626', cursor: 'pointer', fontFamily: 'inherit' }}>✕</button>
+                    <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 12px', background: '#fff', borderRadius: 8, border: '1px solid #E5E7EB' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px auto', gap: 6 }}>
+                        <input style={inputStyle} value={f.label} onChange={e => updateField(i, e.target.value, f.type)} placeholder="Field name" />
+                        <select style={inputStyle} value={f.type} onChange={e => updateField(i, f.label, e.target.value)}>
+                          <option value="text">Text</option>
+                          <option value="date">Date</option>
+                          <option value="textarea">Long text</option>
+                          <option value="select">Dropdown</option>
+                        </select>
+                        <button onClick={() => removeField(i)} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #FECACA', background: '#FFF5F5', color: '#DC2626', cursor: 'pointer', fontFamily: 'inherit' }}>✕</button>
+                      </div>
+                      {f.type === 'select' && (
+                        <div>
+                          <label style={{ ...labelStyle, marginBottom: 4 }}>DROPDOWN OPTIONS (one per line)</label>
+                          <textarea
+                            style={{ ...inputStyle, minHeight: 70, resize: 'vertical', fontSize: 12 }}
+                            value={(f as any).options?.join('\n') ?? ''}
+                            onChange={e => {
+                              const options = e.target.value.split('\n').map(o => o.trim()).filter(Boolean)
+                              setFormFields(prev => prev.map((field, idx) => idx === i ? { ...field, options } : field))
+                            }}
+                            placeholder={'Option 1\nOption 2\nOption 3'}
+                          />
+                          <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 2 }}>Enter each option on a new line</div>
+                        </div>
+                      )}
                     </div>
                   ))}
                   <button onClick={addField} style={{ padding: 7, borderRadius: 6, border: '1px dashed #E5E7EB', background: '#fff', cursor: 'pointer', fontSize: 12, color: '#6B7280', fontFamily: 'inherit' }}>+ Add field</button>
