@@ -109,6 +109,159 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   return <div style={{ marginBottom: 12 }}><label style={labelStyle}>{label.toUpperCase()}</label>{children}</div>
 }
 
+
+// ── Manage Task Types Panel ───────────────────────────────────────────────────
+function ManageTypesPanel({ customTypes, onClose, onSave }: {
+  customTypes: CustomTaskTypeDef[]
+  onClose: () => void
+  onSave: (types: CustomTaskTypeDef[]) => void
+}) {
+  const [types, setTypes] = useState<CustomTaskTypeDef[]>(customTypes)
+  const [isNew, setIsNew] = useState(false)
+  const [editing, setEditing] = useState<CustomTaskTypeDef | null>(null)
+  const [formLabel, setFormLabel] = useState('')
+  const [formIcon, setFormIcon] = useState('📋')
+  const [formColor, setFormColor] = useState(COLOR_PALETTE[0].color)
+  const [formBg, setFormBg] = useState(COLOR_PALETTE[0].bg)
+  const [formFields, setFormFields] = useState<Array<{ key: string; label: string; type: string }>>([])
+
+  const startNew = () => { setIsNew(true); setEditing(null); setFormLabel(''); setFormIcon('📋'); setFormColor(COLOR_PALETTE[0].color); setFormBg(COLOR_PALETTE[0].bg); setFormFields([]) }
+  const startEdit = (t: CustomTaskTypeDef) => { setIsNew(false); setEditing(t); setFormLabel(t.label); setFormIcon(t.icon); setFormColor(t.color); setFormBg(t.bg); setFormFields([...t.fields]) }
+  const cancelForm = () => { setIsNew(false); setEditing(null) }
+
+  const saveType = () => {
+    if (!formLabel.trim()) return
+    const key = editing ? editing.key : formLabel.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+    const newType: CustomTaskTypeDef = { key, label: formLabel.trim(), icon: formIcon, color: formColor, bg: formBg, fields: formFields }
+    if (editing) setTypes(prev => prev.map(t => t.key === editing.key ? newType : t))
+    else setTypes(prev => [...prev, newType])
+    cancelForm()
+  }
+
+  const deleteType = (key: string) => setTypes(prev => prev.filter(t => t.key !== key))
+  const addField = () => setFormFields(prev => [...prev, { key: `field${prev.length}`, label: '', type: 'text' }])
+  const updateField = (i: number, label: string, type: string) => setFormFields(prev => prev.map((f, idx) => idx === i ? { key: label.toLowerCase().replace(/\s+/g, '-'), label, type } : f))
+  const removeField = (i: number) => setFormFields(prev => prev.filter((_, idx) => idx !== i))
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 199 }} />
+      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 480, background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', zIndex: 200, display: 'flex', flexDirection: 'column', fontFamily: "'DM Sans', sans-serif" }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #E5E7EB', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F9FAFB' }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: '#111827' }}>⚙ Task Types</div>
+            <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>Add custom task categories for your practice</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#6B7280' }}>×</button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+          {/* Built-in types */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.05em', marginBottom: 10 }}>BUILT-IN TYPES</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {Object.entries(BUILTIN_TYPE_META).map(([k, v]) => (
+                <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: v.bg, border: `1px solid ${v.color}30` }}>
+                  <span style={{ fontSize: 16 }}>{v.icon}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: v.color }}>{v.label}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 11, color: v.color, opacity: 0.6 }}>Built-in</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Custom types */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.05em', marginBottom: 10 }}>CUSTOM TYPES</div>
+            {types.length === 0 && !isNew && (
+              <div style={{ border: '2px dashed #E5E7EB', borderRadius: 8, padding: 20, textAlign: 'center', fontSize: 13, color: '#9CA3AF' }}>No custom types yet</div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {types.map(t => (
+                <div key={t.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: t.bg, border: `1px solid ${t.color}30` }}>
+                  <span style={{ fontSize: 16 }}>{t.icon}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: t.color }}>{t.label}</div>
+                    <div style={{ fontSize: 11, color: t.color, opacity: 0.6 }}>{t.fields.length} custom field{t.fields.length !== 1 ? 's' : ''}</div>
+                  </div>
+                  <button onClick={() => startEdit(t)} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 5, border: `1px solid ${t.color}50`, background: '#fff', color: t.color, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
+                  <button onClick={() => deleteType(t.key)} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 5, border: '1px solid #FECACA', background: '#FFF5F5', color: '#DC2626', cursor: 'pointer', fontFamily: 'inherit' }}>Delete</button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Editor */}
+          {(isNew || editing) && (
+            <div style={{ background: '#F9FAFB', borderRadius: 10, padding: 16, marginBottom: 16, border: '1px solid #E5E7EB' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#111827', marginBottom: 14 }}>{isNew ? 'New task type' : `Editing: ${editing?.label}`}</div>
+              <div style={{ marginBottom: 12 }}>
+                <label style={labelStyle}>TYPE NAME</label>
+                <input style={inputStyle} value={formLabel} onChange={e => setFormLabel(e.target.value)} placeholder="e.g. Lab Order" />
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <label style={labelStyle}>ICON</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {ICON_OPTIONS.map(ico => (
+                    <button key={ico} onClick={() => setFormIcon(ico)} style={{ width: 36, height: 36, fontSize: 18, border: `2px solid ${formIcon === ico ? formColor : '#E5E7EB'}`, borderRadius: 8, background: formIcon === ico ? formBg : '#fff', cursor: 'pointer' }}>{ico}</button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <label style={labelStyle}>COLOR</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {COLOR_PALETTE.map(p => (
+                    <button key={p.color} onClick={() => { setFormColor(p.color); setFormBg(p.bg) }} style={{ width: 28, height: 28, borderRadius: '50%', background: p.color, border: `3px solid ${formColor === p.color ? '#111827' : 'transparent'}`, cursor: 'pointer' }} />
+                  ))}
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: formBg, marginBottom: 14 }}>
+                <span style={{ fontSize: 16 }}>{formIcon}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: formColor }}>{formLabel || 'Preview'}</span>
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <label style={labelStyle}>CUSTOM FIELDS</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {formFields.map((f, i) => (
+                    <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 90px auto', gap: 6 }}>
+                      <input style={inputStyle} value={f.label} onChange={e => updateField(i, e.target.value, f.type)} placeholder="Field name" />
+                      <select style={inputStyle} value={f.type} onChange={e => updateField(i, f.label, e.target.value)}>
+                        <option value="text">Text</option>
+                        <option value="date">Date</option>
+                        <option value="textarea">Long text</option>
+                        <option value="select">Dropdown</option>
+                      </select>
+                      <button onClick={() => removeField(i)} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #FECACA', background: '#FFF5F5', color: '#DC2626', cursor: 'pointer', fontFamily: 'inherit' }}>✕</button>
+                    </div>
+                  ))}
+                  <button onClick={addField} style={{ padding: 7, borderRadius: 6, border: '1px dashed #E5E7EB', background: '#fff', cursor: 'pointer', fontSize: 12, color: '#6B7280', fontFamily: 'inherit' }}>+ Add field</button>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={cancelForm} style={{ flex: 1, padding: 8, borderRadius: 6, border: '1px solid #E5E7EB', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: '#374151' }}>Cancel</button>
+                <button onClick={saveType} disabled={!formLabel.trim()} style={{ flex: 2, padding: 8, borderRadius: 6, border: 'none', background: formLabel.trim() ? formColor : '#D1D5DB', color: '#fff', cursor: formLabel.trim() ? 'pointer' : 'not-allowed', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>
+                  {isNew ? 'Add type' : 'Save changes'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!isNew && !editing && (
+            <button onClick={startNew} style={{ width: '100%', padding: 10, borderRadius: 8, border: '2px dashed #6366F1', background: '#EEF2FF', color: '#4338CA', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>
+              + Add new task type
+            </button>
+          )}
+        </div>
+
+        <div style={{ padding: '12px 20px', borderTop: '1px solid #E5E7EB', display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: 9, borderRadius: 7, border: '1px solid #E5E7EB', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: '#374151' }}>Cancel</button>
+          <button onClick={() => { onSave(types); onClose() }} style={{ flex: 2, padding: 9, borderRadius: 7, border: 'none', background: 'linear-gradient(135deg,#6366F1,#8B5CF6)', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>Save all types</button>
+        </div>
+      </div>
+    </>
+  )
+}
+
 // ── Notifications Settings Panel ──────────────────────────────────────────────
 function NotificationsPanel({ currentUser, onClose }: { currentUser: CurrentUser; onClose: () => void }) {
   const [prefs, setPrefs] = useState<NotificationPref[]>([])
@@ -661,6 +814,7 @@ function Dashboard({ currentUser, onLogout }: { currentUser: CurrentUser; onLogo
   const [selected, setSelected] = useState<Task | null>(null)
   const [panelTask, setPanelTask] = useState<Task | null>(null)
   const [showPanel, setShowPanel] = useState(false)
+  const [showManageTypes, setShowManageTypes] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
   const [search, setSearch] = useState('')
   const [dragOverCol, setDragOverCol] = useState<string | null>(null)
@@ -758,6 +912,7 @@ function Dashboard({ currentUser, onLogout }: { currentUser: CurrentUser; onLogo
         <div style={{ flex: 1 }} />
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search patient, ECW #, or notes…" style={{ padding: '5px 11px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 12, width: 230, outline: 'none', fontFamily: 'inherit', background: '#F9FAFB', color: '#111827' }} />
         <button onClick={() => { setPanelTask(null); setShowPanel(true) }} style={{ padding: '7px 14px', borderRadius: 7, border: 'none', background: 'linear-gradient(135deg,#6366F1,#8B5CF6)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>+ New Task</button>
+        <button onClick={() => setShowManageTypes(true)} style={{ padding: '7px 12px', borderRadius: 7, border: '1px solid #E5E7EB', background: '#fff', color: '#374151', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>⚙ Types</button>
         <button onClick={() => setShowNotifications(true)} style={{ padding: '7px 12px', borderRadius: 7, border: '1px solid #E5E7EB', background: '#fff', color: '#374151', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>🔔 Notifications</button>
         <div style={{ display: 'flex', gap: 1, background: '#F3F4F6', borderRadius: 8, padding: 3 }}>
           {(['board', 'list'] as const).map(v => (
@@ -880,6 +1035,14 @@ function Dashboard({ currentUser, onLogout }: { currentUser: CurrentUser; onLogo
         <TaskPanel task={panelTask} customTypes={customTypes} currentUser={currentUser}
           onClose={() => setShowPanel(false)}
           onSave={handleSave}
+        />
+      )}
+
+      {showManageTypes && (
+        <ManageTypesPanel
+          customTypes={customTypes}
+          onClose={() => setShowManageTypes(false)}
+          onSave={setCustomTypes}
         />
       )}
 
