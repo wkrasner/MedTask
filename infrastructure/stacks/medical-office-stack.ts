@@ -195,6 +195,65 @@ export class MedicalOfficeStack extends cdk.Stack {
       resources: [`arn:aws:secretsmanager:us-east-1:218908192454:secret:medtask/ecw-sandbox*`],
     }))
 
+    // ── Lambda: Report Generator ─────────────────────────────────────────────
+    const reportLambda = new lambdaNodejs.NodejsFunction(this, 'ReportHandler', {
+      functionName: `medical-office-report-${props.environment}`,
+      entry: path.join(__dirname, '../../backend/lambdas/report/handler.ts'),
+      handler: 'handler',
+      environment: {
+        TASKS_TABLE: tasksTable.tableName,
+        PREFS_TABLE: prefsTable.tableName,
+        FROM_EMAIL: props.fromEmail,
+        APP_URL: appUrl,
+      },
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(120),
+      memorySize: 512,
+      logRetention: isProd ? logs.RetentionDays.ONE_YEAR : logs.RetentionDays.ONE_WEEK,
+      bundling: {
+        nodeModules: ['exceljs', 'pdfkit'],
+      },
+    })
+    tasksTable.grantReadData(reportLambda)
+    prefsTable.grantReadData(reportLambda)
+    reportLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+      resources: ['*'],
+    }))
+
+    // Scheduled daily report Lambda
+    const scheduledReportLambda = new lambdaNodejs.NodejsFunction(this, 'ScheduledReportHandler', {
+      functionName: `medical-office-scheduled-report-${props.environment}`,
+      entry: path.join(__dirname, '../../backend/lambdas/report/handler.ts'),
+      handler: 'scheduledHandler',
+      environment: {
+        TASKS_TABLE: tasksTable.tableName,
+        PREFS_TABLE: prefsTable.tableName,
+        FROM_EMAIL: props.fromEmail,
+        APP_URL: appUrl,
+      },
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(120),
+      memorySize: 512,
+      logRetention: isProd ? logs.RetentionDays.ONE_YEAR : logs.RetentionDays.ONE_WEEK,
+      bundling: {
+        nodeModules: ['exceljs', 'pdfkit'],
+      },
+    })
+    tasksTable.grantReadData(scheduledReportLambda)
+    prefsTable.grantReadData(scheduledReportLambda)
+    scheduledReportLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+      resources: ['*'],
+    }))
+
+    // EventBridge: daily report at 7am ET (12:00 UTC)
+    new events.Rule(this, 'DailyReportSchedule', {
+      ruleName: `medical-office-daily-report-${props.environment}`,
+      schedule: events.Schedule.cron({ minute: '0', hour: '12' }),
+      targets: [new eventsTargets.LambdaFunction(scheduledReportLambda)],
+    })
+
     // ── API Gateway ───────────────────────────────────────────────────────────
     const httpApi = new apigatewayv2.HttpApi(this, 'TasksApi', {
       apiName: `medical-office-api-${props.environment}`,
@@ -239,6 +298,10 @@ export class MedicalOfficeStack extends cdk.Stack {
     // FHIR search routes
     httpApi.addRoutes({ path: '/fhir/search', methods: [apigatewayv2.HttpMethod.GET], integration: fhirSearchIntegration })
     httpApi.addRoutes({ path: '/fhir/patient/{patientId}', methods: [apigatewayv2.HttpMethod.GET], integration: fhirSearchIntegration })
+
+    // Report routes
+    const reportIntegration = new apigatewayv2Integrations.HttpLambdaIntegration('ReportIntegration', reportLambda)
+    httpApi.addRoutes({ path: '/reports/generate', methods: [apigatewayv2.HttpMethod.POST, apigatewayv2.HttpMethod.OPTIONS], integration: reportIntegration })
 
     // ── S3 + CloudFront ───────────────────────────────────────────────────────
     const siteBucket = s3.Bucket.fromBucketName(
