@@ -850,6 +850,153 @@ function StatCard({ label, value, sub, color }: { label: string; value: number; 
   )
 }
 
+
+// ── Reports Panel ─────────────────────────────────────────────────────────────
+function ReportsPanel({ onClose, customTypes }: { onClose: () => void; customTypes: CustomTaskTypeDef[] }) {
+  const [filters, setFilters] = useState({
+    taskType: '', status: '', priority: '', assignedTo: '',
+    startDate: '', endDate: '', dueDateFrom: '', dueDateTo: '',
+  })
+  const [generating, setGenerating] = useState<string | null>(null)
+
+  const allTypeMeta = { ...BUILTIN_TYPE_META, ...Object.fromEntries(customTypes.map(t => [t.key, t])) }
+
+  const setFilter = (k: string, v: string) => setFilters(f => ({ ...f, [k]: v }))
+
+  const generate = async (format: string) => {
+    setGenerating(format)
+    try {
+      const cleanFilters = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== ''))
+      const title = `MedTask Report — ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`
+      const res = await apiFetch<any>('/reports/generate', {
+        method: 'POST',
+        body: JSON.stringify({ format, filters: cleanFilters, title }),
+      })
+      // The Lambda returns base64 encoded binary — need raw fetch for binary
+      const rawRes = await fetch(`${import.meta.env.VITE_API_URL}/reports/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format, filters: cleanFilters, title }),
+      })
+      const blob = await rawRes.blob()
+      const ext = format === 'excel' ? 'xlsx' : format === 'text' ? 'txt' : format
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `medtask-report-${new Date().toISOString().slice(0, 10)}.${ext}`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      alert('Failed to generate report: ' + (e as Error).message)
+    } finally {
+      setGenerating(null)
+    }
+  }
+
+  const inp: React.CSSProperties = { width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid #E5E7EB', fontSize: 13, fontFamily: 'inherit', color: '#111827', background: '#fff', outline: 'none' }
+  const lbl: React.CSSProperties = { display: 'block', fontSize: 11, fontWeight: 700, color: '#6B7280', letterSpacing: '0.05em', marginBottom: 4 }
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 199 }} />
+      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 440, background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', zIndex: 200, display: 'flex', flexDirection: 'column', fontFamily: "'DM Sans', sans-serif" }}>
+        {/* Header */}
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #E5E7EB', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F9FAFB' }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: '#111827' }}>📊 Generate Report</div>
+            <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>Filter, then export in your preferred format</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#6B7280' }}>×</button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+
+          {/* Filters */}
+          <div style={{ background: '#F9FAFB', borderRadius: 8, padding: '14px', marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', letterSpacing: '0.05em', marginBottom: 12 }}>FILTERS</div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div><label style={lbl}>TASK TYPE</label>
+                <select style={inp} value={filters.taskType} onChange={e => setFilter('taskType', e.target.value)}>
+                  <option value="">All types</option>
+                  {Object.entries(allTypeMeta).map(([k, v]) => <option key={k} value={k}>{(v as any).icon} {(v as any).label}</option>)}
+                </select>
+              </div>
+              <div><label style={lbl}>STATUS</label>
+                <select style={inp} value={filters.status} onChange={e => setFilter('status', e.target.value)}>
+                  <option value="">All statuses</option>
+                  {['open', 'in-progress', 'pending', 'completed', 'denied', 'cancelled'].map(s => <option key={s} value={s}>{s.replace(/-/g, ' ').replace(/\w/g, c => c.toUpperCase())}</option>)}
+                </select>
+              </div>
+              <div><label style={lbl}>PRIORITY</label>
+                <select style={inp} value={filters.priority} onChange={e => setFilter('priority', e.target.value)}>
+                  <option value="">All priorities</option>
+                  {['urgent', 'high', 'normal', 'low'].map(p => <option key={p} value={p}>{p.replace(/\w/g, c => c.toUpperCase())}</option>)}
+                </select>
+              </div>
+              <div><label style={lbl}>ASSIGNED TO</label>
+                <input style={inp} value={filters.assignedTo} onChange={e => setFilter('assignedTo', e.target.value)} placeholder="Staff name" />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', letterSpacing: '0.05em', marginBottom: 8 }}>DATE CREATED RANGE</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div><label style={lbl}>FROM</label><input type="date" style={inp} value={filters.startDate} onChange={e => setFilter('startDate', e.target.value)} /></div>
+                <div><label style={lbl}>TO</label><input type="date" style={inp} value={filters.endDate} onChange={e => setFilter('endDate', e.target.value)} /></div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', letterSpacing: '0.05em', marginBottom: 8 }}>DUE DATE RANGE</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div><label style={lbl}>FROM</label><input type="date" style={inp} value={filters.dueDateFrom} onChange={e => setFilter('dueDateFrom', e.target.value)} /></div>
+                <div><label style={lbl}>TO</label><input type="date" style={inp} value={filters.dueDateTo} onChange={e => setFilter('dueDateTo', e.target.value)} /></div>
+              </div>
+            </div>
+
+            <button onClick={() => setFilters({ taskType: '', status: '', priority: '', assignedTo: '', startDate: '', endDate: '', dueDateFrom: '', dueDateTo: '' })}
+              style={{ marginTop: 10, fontSize: 11, color: '#6B7280', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
+              ↺ Clear all filters
+            </button>
+          </div>
+
+          {/* What's included */}
+          <div style={{ background: '#EEF2FF', borderRadius: 8, padding: '12px 14px', marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#4338CA', marginBottom: 6 }}>REPORT INCLUDES</div>
+            <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.6 }}>
+              ✓ Summary sheet — counts by task type, status, priority, and staff<br />
+              ✓ Detail sheet — one row per task with all fields<br />
+              ✓ Patient name, DOB, ECW #, task type, status, priority<br />
+              ✓ Assigned staff, due date, created date, days in queue<br />
+              ✓ Notes and full activity log
+            </div>
+          </div>
+
+          {/* Export buttons */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', letterSpacing: '0.05em', marginBottom: 10 }}>EXPORT FORMAT</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {[
+              { format: 'excel', label: '📊 Excel (.xlsx)', desc: 'Two sheets: Summary + Detail. Filterable, sortable.', color: '#065F46', bg: '#D1FAE5' },
+              { format: 'csv', label: '📄 CSV', desc: 'Comma-separated, opens in any spreadsheet app.', color: '#0369A1', bg: '#E0F2FE' },
+              { format: 'pdf', label: '📋 PDF', desc: 'Formatted report, ready to print or share.', color: '#7C3AED', bg: '#EDE9FE' },
+              { format: 'text', label: '📝 Word / Plain Text (.txt)', desc: 'Simple text format, paste into any document.', color: '#B45309', bg: '#FEF3C7' },
+            ].map(({ format, label, desc, color, bg }) => (
+              <button key={format} onClick={() => generate(format)} disabled={!!generating}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 8, border: `1px solid ${color}30`, background: generating === format ? bg : '#fff', cursor: generating ? 'not-allowed' : 'pointer', fontFamily: 'inherit', textAlign: 'left', opacity: generating && generating !== format ? 0.5 : 1, transition: 'all 0.15s' }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color }}>{generating === format ? '⏳ Generating…' : label}</div>
+                  <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>{desc}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 function Dashboard({ currentUser, onLogout }: { currentUser: CurrentUser; onLogout: () => void }) {
   const { tasks, setTasks, loading, error, refresh } = useTasks()
@@ -869,6 +1016,8 @@ function Dashboard({ currentUser, onLogout }: { currentUser: CurrentUser; onLogo
   const [panelTask, setPanelTask] = useState<Task | null>(null)
   const [showPanel, setShowPanel] = useState(false)
   const [showManageTypes, setShowManageTypes] = useState(false)
+  const [showReports, setShowReports] = useState(false)
+  const [showOverdueAlert, setShowOverdueAlert] = useState(true)
   const [showNotifications, setShowNotifications] = useState(false)
   const [search, setSearch] = useState('')
   const [dragOverCol, setDragOverCol] = useState<string | null>(null)
@@ -896,6 +1045,11 @@ function Dashboard({ currentUser, onLogout }: { currentUser: CurrentUser; onLogo
     denied: tasks.filter(t => t.status === 'denied').length,
     overdue: tasks.filter(t => isOverdue(t.dueDate) && !['completed', 'cancelled', 'denied'].includes(t.status)).length,
   }), [tasks])
+
+  const overdueTasks = useMemo(() =>
+    tasks.filter(t => isOverdue(t.dueDate) && !['completed', 'cancelled', 'denied'].includes(t.status))
+      .sort((a, b) => (a.dueDate ?? '') < (b.dueDate ?? '') ? -1 : 1)
+  , [tasks])
 
   const handleStatusChange = async (taskId: string, newStatus: string) => {
     try {
@@ -967,6 +1121,7 @@ function Dashboard({ currentUser, onLogout }: { currentUser: CurrentUser; onLogo
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search patient, ECW #, or notes…" style={{ padding: '5px 11px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 12, width: 230, outline: 'none', fontFamily: 'inherit', background: '#F9FAFB', color: '#111827' }} />
         <button onClick={() => { setPanelTask(null); setShowPanel(true) }} style={{ padding: '7px 14px', borderRadius: 7, border: 'none', background: 'linear-gradient(135deg,#6366F1,#8B5CF6)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>+ New Task</button>
         <button onClick={() => setShowManageTypes(true)} style={{ padding: '7px 12px', borderRadius: 7, border: '1px solid #E5E7EB', background: '#fff', color: '#374151', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>⚙ Types</button>
+        <button onClick={() => setShowReports(true)} style={{ padding: '7px 12px', borderRadius: 7, border: '1px solid #E5E7EB', background: '#fff', color: '#374151', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>📊 Reports</button>
         <button onClick={() => setShowNotifications(true)} style={{ padding: '7px 12px', borderRadius: 7, border: '1px solid #E5E7EB', background: '#fff', color: '#374151', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>🔔 Notifications</button>
         <div style={{ display: 'flex', gap: 1, background: '#F3F4F6', borderRadius: 8, padding: 3 }}>
           {(['board', 'list'] as const).map(v => (
@@ -976,6 +1131,44 @@ function Dashboard({ currentUser, onLogout }: { currentUser: CurrentUser; onLogo
         <div style={{ fontSize: 11, color: '#9CA3AF', whiteSpace: 'nowrap' }}>{currentUser.name}</div>
         <button onClick={onLogout} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 6, border: '1px solid #E5E7EB', background: '#fff', cursor: 'pointer', color: '#6B7280' }}>Sign out</button>
       </div>
+
+      {/* Overdue Alert Banner */}
+      {showOverdueAlert && overdueTasks.length > 0 && (
+        <div style={{ background: '#FEF2F2', borderBottom: '2px solid #FCA5A5', padding: '0 20px' }}>
+          <div style={{ maxWidth: 1600, margin: '0 auto', padding: '12px 0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 16 }}>🚨</span>
+                  <span style={{ fontWeight: 800, fontSize: 14, color: '#991B1B' }}>
+                    {overdueTasks.length} Overdue Task{overdueTasks.length !== 1 ? 's' : ''}
+                  </span>
+                  <span style={{ fontSize: 12, color: '#DC2626' }}>— immediate attention required</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {overdueTasks.map(t => {
+                    const daysOver = Math.floor((Date.now() - new Date(t.dueDate!).getTime()) / 86400000)
+                    return (
+                      <div key={t.taskId} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#7F1D1D', background: '#FEE2E2', borderRadius: 6, padding: '5px 10px', width: 'fit-content', cursor: 'pointer' }}
+                        onClick={() => { setSelected(t); setShowOverdueAlert(false) }}>
+                        <span style={{ fontWeight: 700 }}>{t.patientName}</span>
+                        <span style={{ color: '#9CA3AF' }}>·</span>
+                        <span>{t.taskType.replace(/-/g, ' ')}</span>
+                        <span style={{ color: '#9CA3AF' }}>·</span>
+                        <span style={{ fontWeight: 700, color: '#DC2626' }}>
+                          {daysOver === 0 ? 'Due today' : `${daysOver} day${daysOver !== 1 ? 's' : ''} overdue`}
+                        </span>
+                        {t.assignedName && <><span style={{ color: '#9CA3AF' }}>·</span><span>{t.assignedName}</span></>}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+              <button onClick={() => setShowOverdueAlert(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#DC2626', padding: '0 4px', marginLeft: 12, flexShrink: 0 }}>×</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{ padding: '18px 20px', maxWidth: 1600, margin: '0 auto' }}>
         {/* Stats */}
@@ -1089,6 +1282,13 @@ function Dashboard({ currentUser, onLogout }: { currentUser: CurrentUser; onLogo
         <TaskPanel task={panelTask} customTypes={customTypes} currentUser={currentUser}
           onClose={() => setShowPanel(false)}
           onSave={handleSave}
+        />
+      )}
+
+      {showReports && (
+        <ReportsPanel
+          onClose={() => setShowReports(false)}
+          customTypes={customTypes}
         />
       )}
 
