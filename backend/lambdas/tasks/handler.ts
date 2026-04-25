@@ -20,6 +20,10 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   const taskId = path.split('/')[2]
 
   try {
+    // Config endpoints
+    if (method === 'GET' && path === '/config/task-types') return getTaskTypes()
+    if (method === 'PUT' && path === '/config/task-types') return saveTaskTypes(JSON.parse(event.body || '{}'))
+
     // Activity log endpoints
     if (method === 'POST' && path.match(/\/tasks\/.+\/activity/)) {
       return addActivity(path.split('/')[2], JSON.parse(event.body || '{}'))
@@ -73,8 +77,8 @@ async function getTask(taskId: string) {
 }
 
 async function listTasks(query: ListTasksQuery = {}) {
- const { status, taskType, assignedTo, lastKey } = query
-const limit = query.limit ? parseInt(query.limit as string, 10) : 100
+  const { status, taskType, assignedTo, limit = 100, lastKey } = query
+
   if (assignedTo) {
     const result = await ddb.send(new QueryCommand({
       TableName: TABLE,
@@ -218,6 +222,28 @@ async function deleteTask(taskId: string) {
   const sk = existing.Items[0].SK as string
   await ddb.send(new DeleteCommand({ TableName: TABLE, Key: { PK: `TASK#${taskId}`, SK: sk } }))
   return respond(200, { success: true })
+}
+
+async function getTaskTypes() {
+  const result = await ddb.send(new GetCommand({
+    TableName: TABLE,
+    Key: { PK: 'CONFIG#task-types', SK: 'CONFIG#task-types' },
+  }))
+  return respond(200, { success: true, data: result.Item?.types ?? [] })
+}
+
+async function saveTaskTypes(body: { types: unknown[] }) {
+  await ddb.send(new UpdateCommand({
+    TableName: TABLE,
+    Key: { PK: 'CONFIG#task-types', SK: 'CONFIG#task-types' },
+    UpdateExpression: 'SET #types = :types, updatedAt = :now',
+    ExpressionAttributeNames: { '#types': 'types' },
+    ExpressionAttributeValues: {
+      ':types': body.types ?? [],
+      ':now': new Date().toISOString(),
+    },
+  }))
+  return respond(200, { success: true, data: body.types })
 }
 
 function respond(statusCode: number, body: ApiResponse<unknown>) {
