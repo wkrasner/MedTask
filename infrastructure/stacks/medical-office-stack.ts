@@ -211,7 +211,16 @@ export class MedicalOfficeStack extends cdk.Stack {
       memorySize: 512,
       logRetention: isProd ? logs.RetentionDays.ONE_YEAR : logs.RetentionDays.ONE_WEEK,
       bundling: {
-        nodeModules: ['exceljs', 'pdfkit'],
+        commandHooks: {
+          beforeBundling(_inputDir: string, _outputDir: string): string[] { return [] },
+          afterBundling(_inputDir: string, outputDir: string): string[] {
+            return [
+              `cd ${outputDir}`,
+              'npm install --production exceljs@4.4.0 pdfkit@0.15.0',
+            ]
+          },
+          beforeInstall(_inputDir: string, _outputDir: string): string[] { return [] },
+        },
       },
     })
     tasksTable.grantReadData(reportLambda)
@@ -237,7 +246,16 @@ export class MedicalOfficeStack extends cdk.Stack {
       memorySize: 512,
       logRetention: isProd ? logs.RetentionDays.ONE_YEAR : logs.RetentionDays.ONE_WEEK,
       bundling: {
-        nodeModules: ['exceljs', 'pdfkit'],
+        commandHooks: {
+          beforeBundling(_inputDir: string, _outputDir: string): string[] { return [] },
+          afterBundling(_inputDir: string, outputDir: string): string[] {
+            return [
+              `cd ${outputDir}`,
+              'npm install --production exceljs@4.4.0 pdfkit@0.15.0',
+            ]
+          },
+          beforeInstall(_inputDir: string, _outputDir: string): string[] { return [] },
+        },
       },
     })
     tasksTable.grantReadData(scheduledReportLambda)
