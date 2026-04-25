@@ -154,7 +154,9 @@ function ManageTypesPanel({ customTypes, onClose, onSave }: {
   const saveType = () => {
     if (!formLabel.trim()) return
     const key = editing ? editing.key : formLabel.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
-    const newType: CustomTaskTypeDef = { key, label: formLabel.trim(), icon: formIcon, color: formColor, bg: formBg, fields: formFields }
+    // Strip optionsText before saving — it's only needed during editing
+    const cleanFields = formFields.map(({ optionsText, ...f }: any) => f)
+    const newType: CustomTaskTypeDef = { key, label: formLabel.trim(), icon: formIcon, color: formColor, bg: formBg, fields: cleanFields }
     if (editing) setTypes(prev => prev.map(t => t.key === editing.key ? newType : t))
     else setTypes(prev => [...prev, newType])
     cancelForm()
