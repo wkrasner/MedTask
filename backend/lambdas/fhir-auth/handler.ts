@@ -2,6 +2,7 @@ import { APIGatewayProxyHandlerV2 } from 'aws-lambda'
 import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager'
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import { DynamoDBDocumentClient, PutCommand, GetCommand } from '@aws-sdk/lib-dynamodb'
+import { createHash, randomBytes } from 'crypto'
 
 const sm = new SecretsManagerClient({})
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}))
@@ -9,6 +10,7 @@ const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}))
 const TOKENS_TABLE = process.env.TOKENS_TABLE!
 const SECRET_ID = process.env.ECW_SECRET_ID!
 const API_URL = process.env.API_URL!
+const APP_URL = process.env.APP_URL!
 
 interface EcwSecret {
   clientId: string
@@ -35,13 +37,21 @@ async function saveTokens(userId: string, tokens: Record<string, unknown>) {
   }))
 }
 
-async function refreshAccessToken(secret: EcwSecret, refreshToken: string) {
+// Generate PKCE code verifier and challenge
+function generatePKCE() {
+  const codeVerifier = randomBytes(32).toString('base64url')
+  const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url')
+  return { codeVerifier, codeChallenge }
+}
+
+async function refreshAccessToken(secret: EcwSecret, refreshToken: string, codeVerifier?: string) {
   const params = new URLSearchParams({
     grant_type: 'refresh_token',
     refresh_token: refreshToken,
     client_id: secret.clientId,
     client_secret: secret.clientSecret,
   })
+  if (codeVerifier) params.set('code_verifier', codeVerifier)
   const res = await fetch(secret.tokenUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -61,21 +71,43 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     // ── GET /fhir/auth — redirect user to ECW login ──────────────────────────
     if (method === 'GET' && path === '/fhir/auth') {
       const userId = event.queryStringParameters?.userId ?? 'unknown'
+
+      // Generate PKCE
+      const { codeVerifier, codeChallenge } = generatePKCE()
+
+      // Store code verifier temporarily so we can use it in callback
+      await saveTokens(`pkce_${userId}`, { codeVerifier, expiresAt: Date.now() + 600000 })
+
       const params = new URLSearchParams({
         response_type: 'code',
         client_id: secret.clientId,
         redirect_uri: `${API_URL}/fhir/callback`,
         scope: 'openid launch/patient patient/AllergyIntolerance.read patient/Condition.read patient/Encounter.read patient/Medication.read patient/MedicationRequest.read patient/Observation.read patient/Procedure.read patient/DiagnosticReport.read patient/FamilyMemberHistory.read patient/Immunization.read patient/DocumentReference.read user/Encounter.read',
         state: userId,
+        aud: secret.fhirBaseUrl,
+        code_challenge: codeChallenge,
+        code_challenge_method: 'S256',
       })
+
       const authUrl = `${secret.authUrl}?${params.toString()}`
+      console.log('Auth URL:', authUrl)
       return { statusCode: 302, headers: { Location: authUrl }, body: '' }
     }
 
     // ── GET /fhir/callback — exchange code for tokens ────────────────────────
     if (method === 'GET' && path === '/fhir/callback') {
-      const { code, state: userId } = event.queryStringParameters ?? {}
+      const { code, state: userId, error, error_description } = event.queryStringParameters ?? {}
+
+      if (error) {
+        console.error('ECW auth error:', error, error_description)
+        return { statusCode: 302, headers: { Location: `${APP_URL}?ecw_error=${encodeURIComponent(error_description ?? error)}` }, body: '' }
+      }
+
       if (!code || !userId) return respond(400, { error: 'Missing code or state' })
+
+      // Retrieve stored code verifier
+      const pkceItem = await getTokens(`pkce_${userId}`)
+      const codeVerifier = pkceItem?.codeVerifier
 
       const params = new URLSearchParams({
         grant_type: 'authorization_code',
@@ -84,6 +116,9 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         client_id: secret.clientId,
         client_secret: secret.clientSecret,
       })
+      if (codeVerifier) params.set('code_verifier', codeVerifier)
+
+      console.log('Token exchange params:', params.toString())
 
       const res = await fetch(secret.tokenUrl, {
         method: 'POST',
@@ -91,29 +126,31 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         body: params.toString(),
       })
 
+      const responseText = await res.text()
+      console.log('Token response status:', res.status)
+      console.log('Token response body:', responseText)
+
       if (!res.ok) {
-        const err = await res.text()
-        console.error('Token exchange failed:', err)
-        return respond(400, { error: 'Token exchange failed', detail: err })
+        return { statusCode: 302, headers: { Location: `${APP_URL}?ecw_error=${encodeURIComponent(responseText)}` }, body: '' }
       }
 
-      const tokens = await res.json()
+      const tokens = JSON.parse(responseText)
       await saveTokens(userId, {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token,
         expiresAt: Date.now() + (tokens.expires_in * 1000),
         patient: tokens.patient,
+        codeVerifier,
       })
 
-      // Redirect back to app with success
       return {
         statusCode: 302,
-        headers: { Location: `${process.env.APP_URL}?ecw_connected=true` },
+        headers: { Location: `${APP_URL}?ecw_connected=true` },
         body: '',
       }
     }
 
-    // ── GET /fhir/status — check if user has valid tokens ────────────────────
+    // ── GET /fhir/status ──────────────────────────────────────────────────────
     if (method === 'GET' && path === '/fhir/status') {
       const userId = event.queryStringParameters?.userId
       if (!userId) return respond(400, { error: 'Missing userId' })
@@ -123,13 +160,13 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
       return respond(200, { connected, expired, needsRefresh: connected && expired })
     }
 
-    // ── POST /fhir/refresh — refresh access token ─────────────────────────────
+    // ── POST /fhir/refresh ────────────────────────────────────────────────────
     if (method === 'POST' && path === '/fhir/refresh') {
       const { userId } = JSON.parse(event.body ?? '{}')
       if (!userId) return respond(400, { error: 'Missing userId' })
       const tokens = await getTokens(userId)
-      if (!tokens?.refreshToken) return respond(401, { error: 'No refresh token found — user must re-authenticate' })
-      const newTokens = await refreshAccessToken(secret, tokens.refreshToken)
+      if (!tokens?.refreshToken) return respond(401, { error: 'No refresh token — user must re-authenticate' })
+      const newTokens = await refreshAccessToken(secret, tokens.refreshToken, tokens.codeVerifier)
       await saveTokens(userId, {
         ...tokens,
         accessToken: newTokens.access_token,
