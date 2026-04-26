@@ -593,7 +593,24 @@ function TaskPanel({ task, customTypes, currentUser, onClose, onSave }: {
               <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', letterSpacing: '0.05em', marginBottom: 10 }}>{meta.icon} {meta.label.toUpperCase()} DETAILS</div>
               {currentFields.map(f => (
                 <Field key={f.key} label={f.label}>
-                  {f.type === 'select' ? (
+                  {f.type === 'multiselect' ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 10px', borderRadius: 6, border: '1px solid #E5E7EB', background: '#fff' }}>
+                      {(f.options ?? []).map(opt => {
+                        const selected = (fieldValues[f.key] ?? '').split(',').map((s: string) => s.trim()).filter(Boolean).includes(opt)
+                        return (
+                          <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', padding: '4px 10px', borderRadius: 20, border: `1px solid ${selected ? '#6366F1' : '#E5E7EB'}`, background: selected ? '#EEF2FF' : '#fff', fontSize: 12, color: selected ? '#4338CA' : '#374151', userSelect: 'none', transition: 'all 0.1s' }}>
+                            <input type="checkbox" checked={selected} style={{ display: 'none' }}
+                              onChange={() => {
+                                const current = (fieldValues[f.key] ?? '').split(',').map((s: string) => s.trim()).filter(Boolean)
+                                const next = selected ? current.filter((v: string) => v !== opt) : [...current, opt]
+                                setFieldValues(v => ({ ...v, [f.key]: next.join(', ') }))
+                              }} />
+                            {selected ? '✓ ' : ''}{opt}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  ) : f.type === 'select' ? (
                     <select style={inputStyle} value={fieldValues[f.key] ?? ''} onChange={e => setFieldValues(v => ({ ...v, [f.key]: e.target.value }))}>
                       <option value="">Select…</option>
                       {f.options?.map(o => <option key={o} value={o}>{o}</option>)}
