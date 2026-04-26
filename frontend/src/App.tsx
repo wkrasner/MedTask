@@ -254,11 +254,12 @@ function ManageTypesPanel({ customTypes, onClose, onSave }: {
                           <option value="text">Text</option>
                           <option value="date">Date</option>
                           <option value="textarea">Long text</option>
-                          <option value="select">Dropdown</option>
+                          <option value="select">Dropdown (pick one)</option>
+                          <option value="multiselect">Checklist (pick many)</option>
                         </select>
                         <button onClick={() => removeField(i)} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #FECACA', background: '#FFF5F5', color: '#DC2626', cursor: 'pointer', fontFamily: 'inherit' }}>✕</button>
                       </div>
-                      {f.type === 'select' && (
+                      {(f.type === 'select' || f.type === 'multiselect') && (
                         <div>
                           <label style={{ ...labelStyle, marginBottom: 4 }}>DROPDOWN OPTIONS (one per line)</label>
                           <textarea
@@ -676,6 +677,10 @@ function TaskCard({ task, customTypes, onClick, onDragStart }: {
         {denied && <span style={{ fontSize: 9, background: '#FEE2E2', color: '#991B1B', padding: '1px 5px', borderRadius: 3, fontWeight: 700 }}>⛔ Denied</span>}
         {!denied && overdue && <span style={{ fontSize: 9, background: '#FEE2E2', color: '#991B1B', padding: '1px 5px', borderRadius: 3, fontWeight: 700 }}>⚠ Overdue</span>}
         {!denied && dueToday && <span style={{ fontSize: 9, background: '#FEF3C7', color: '#92400E', padding: '1px 5px', borderRadius: 3, fontWeight: 700 }}>Today</span>}
+        {getTypeFields(task.taskType, customTypes).filter(f => f.type === 'multiselect').flatMap(f =>
+          ((task.customFields?.[f.key] ?? String(task[f.key] ?? '')).split(',').map((s: string) => s.trim()).filter(Boolean))
+            .map((val: string) => <span key={val} style={{ fontSize: 9, background: meta.bg, color: meta.color, padding: '1px 6px', borderRadius: 10, fontWeight: 600, border: `1px solid ${meta.color}40` }}>{val}</span>)
+        )}
       </div>
       <div style={{ fontSize: 11, color: '#6B7280', lineHeight: 1.4, marginBottom: 5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' } as React.CSSProperties}>{task.notes}</div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
